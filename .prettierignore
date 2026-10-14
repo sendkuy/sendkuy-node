@@ -1,0 +1,4 @@
+dist
+spec
+src/generated
+package-lock.json

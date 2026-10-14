@@ -1,0 +1,76 @@
+{
+  "name": "sendkuy",
+  "version": "1.0.0",
+  "description": "Send WhatsApp, SMS and email from Node.js, Bun, Deno and edge runtimes with the SendKuy API.",
+  "keywords": [
+    "sendkuy",
+    "whatsapp",
+    "whatsapp-api",
+    "sms",
+    "email",
+    "otp",
+    "notifications",
+    "messaging",
+    "indonesia"
+  ],
+  "homepage": "https://docs.sendkuy.com",
+  "bugs": {
+    "url": "https://github.com/sendkuy/sendkuy-node/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sendkuy/sendkuy-node.git"
+  },
+  "license": "MIT",
+  "author": "SendKuy (https://sendkuy.com)",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.3"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.id.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsup",
+    "generate": "openapi-typescript spec/openapi.json -o src/generated/openapi.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:package": "publint && attw --pack .",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.10",
+    "publint": "^0.3.25",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.4"
+  }
+}

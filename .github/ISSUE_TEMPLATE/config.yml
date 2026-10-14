@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: SendKuy documentation
+    url: https://docs.sendkuy.com
+    about: Guides and the full API reference.
+  - name: Account or billing help
+    url: https://sendkuy.com/contact
+    about: Questions about your SendKuy account belong with our support team.
