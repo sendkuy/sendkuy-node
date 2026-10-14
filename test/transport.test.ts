@@ -50,14 +50,14 @@ describe('Transport', () => {
     expect(VERSION).toBe(pkg.version);
   });
 
-  it('sends the key and user agent to a self-hosted base URL', async () => {
+  it('sends the key and user agent to a custom base URL', async () => {
     const { transport, requests } = setup([json(200, { data: {} })], {
-      baseUrl: 'https://sendkuy.example.com/api/v1/',
+      baseUrl: 'https://proxy.example.com/api/v1/',
     });
 
     await transport.send('GET', '/account');
 
-    expect(requests[0]!.url.href).toBe('https://sendkuy.example.com/api/v1/account');
+    expect(requests[0]!.url.href).toBe('https://proxy.example.com/api/v1/account');
     expect(requests[0]!.headers.get('authorization')).toBe('Bearer sk_test_123');
     expect(requests[0]!.headers.get('user-agent')).toMatch(
       new RegExp(`^sendkuy-node/${VERSION} node/`)

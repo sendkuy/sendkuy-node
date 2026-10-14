@@ -77,12 +77,12 @@ When your own code retries, pass a key derived from something stable in your sys
 await sendkuy.messages.send(params, { idempotencyKey: 'order-1042-shipped' });
 ```
 
-| Option       | Default                          |                                |
-| ------------ | -------------------------------- | ------------------------------ |
-| `baseUrl`    | `https://app.sendkuy.com/api/v1` |                                |
-| `timeout`    | `30000`                          | milliseconds; also per request |
-| `maxRetries` | `2`                              |                                |
-| `fetch`      | `globalThis.fetch`               | for proxies and tests          |
+| Option       | Default                          |                                                           |
+| ------------ | -------------------------------- | --------------------------------------------------------- |
+| `baseUrl`    | `https://app.sendkuy.com/api/v1` | change it only to reach a proxy or a mock server in tests |
+| `timeout`    | `30000`                          | milliseconds; also per request                            |
+| `maxRetries` | `2`                              |                                                           |
+| `fetch`      | `globalThis.fetch`               | for proxies and tests                                     |
 
 ## Pagination
 

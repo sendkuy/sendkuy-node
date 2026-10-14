@@ -17,11 +17,11 @@
   "servers": [
     {
       "url": "{origin}/api/v1",
-      "description": "Your SendKuy instance",
+      "description": "SendKuy API",
       "variables": {
         "origin": {
           "default": "https://app.sendkuy.com",
-          "description": "Where your SendKuy runs. Self-hosted instances change this."
+          "description": "The SendKuy API host. Change it only to reach a proxy or a mock server in tests."
         }
       }
     }
@@ -4685,7 +4685,7 @@
               "user",
               "admin"
             ],
-            "description": "`admin` keys belong to the instance, not to an account. For them\n`plan`, `credits` and `usage` come back null rather than missing —\na shape that disappears forces the caller to guess.\n"
+            "description": "Your keys are `user` keys. `admin` keys belong to SendKuy staff, not\nto an account. For them\n`plan`, `credits` and `usage` come back null rather than missing —\na shape that disappears forces the caller to guess.\n"
           },
           "name": {
             "type": "string"
@@ -5221,7 +5221,7 @@
             }
           }
         },
-        "description": "A list that is not a page. There is no cursor and no `meta` because\nnothing was cut off: two of the three endpoints that answer this way\nreturn one row per element you sent, and the third returns every\nattribute you have defined.\n"
+        "description": "A list that is not a page. There is no cursor and no `meta` because\nnothing was cut off: three of the four endpoints that answer this way\nreturn one row per element you sent, and the fourth returns every\nattribute you have defined.\n"
       },
       "SendMessageBatchRequest": {
         "type": "object",

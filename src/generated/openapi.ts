@@ -982,7 +982,8 @@ export interface components {
             /** @example usr_9cBe3A1H-SLhW5fONWZ32wb-IIio5Ts3 */
             id: string;
             /**
-             * @description `admin` keys belong to the instance, not to an account. For them
+             * @description Your keys are `user` keys. `admin` keys belong to SendKuy staff, not
+             *     to an account. For them
              *     `plan`, `credits` and `usage` come back null rather than missing —
              *     a shape that disappears forces the caller to guess.
              * @enum {string}
@@ -1180,8 +1181,8 @@ export interface components {
         };
         /**
          * @description A list that is not a page. There is no cursor and no `meta` because
-         *     nothing was cut off: two of the three endpoints that answer this way
-         *     return one row per element you sent, and the third returns every
+         *     nothing was cut off: three of the four endpoints that answer this way
+         *     return one row per element you sent, and the fourth returns every
          *     attribute you have defined.
          */
         ListEnvelope: {
