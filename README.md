@@ -14,8 +14,6 @@ Send WhatsApp, SMS and email from Node.js, Bun, Deno and edge runtimes, with typ
 [![Types included](https://img.shields.io/badge/types-included-blue)](src/types.ts)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> **Status:** not released yet. The first release, 1.0.0, is on its way. Star or watch this repository to hear when it lands.
-
 [Baca dalam Bahasa Indonesia](README.id.md)
 
 ## Install

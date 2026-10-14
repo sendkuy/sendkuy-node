@@ -6,8 +6,6 @@
 
 Kirim WhatsApp, SMS, dan email dari Node.js, Bun, Deno, dan edge runtime. Respons bertipe, dan retry-nya tidak pernah mengirim dobel.
 
-> **Status:** belum dirilis. Rilis pertama, 1.0.0, sedang disiapkan. Beri star atau watch repo ini supaya kamu tahu saat rilis.
-
 [Read in English](README.md)
 
 ## Instalasi
