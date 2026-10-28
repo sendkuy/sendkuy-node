@@ -298,7 +298,7 @@
       "post": {
         "operationId": "sendMessage",
         "summary": "Send one message to one or more recipients",
-        "description": "One call, one body, one channel, many recipients — and one `message`\nobject back per recipient. A message is one row of delivery: one\nperson, one status. Sending to three numbers returns three objects.\n\nRecipients must be in E.164 form, with the `+`. A local number is\nrefused rather than guessed: guessing the wrong country sends a\nstranger a message and bills you for it.\n",
+        "description": "One call, one body, one channel, many recipients — and one `message`\nobject back per recipient. A message is one row of delivery: one\nperson, one status. Sending to three numbers returns three objects.\n\nEvery recipient, its sender, and the credit for all of them are checked\nbefore anything is sent. A missing contact or group, a contact without\nan address on the channel, no sender for one of the recipients, or too\nlittle credit refuses the whole call and nobody receives anything.\n\nOne recipient is sent while you wait, and its `status` is the outcome.\nMore than one recipient (a `grp_` group counts as its members) is\naccepted, answered at once as `queued`, and sent in the background,\npaced per number to keep it healthy. Follow each message with webhooks\nor `GET /messages/{id}`. For bulk sends use several `to` or\n`POST /messages/batch`: both are paced for you. Looping over single\nsends is not.\n\nRecipients must be in E.164 form, with the `+`. A local number is\nrefused rather than guessed: guessing the wrong country sends a\nstranger a message and bills you for it.\n",
         "tags": [
           "Messages"
         ],
@@ -405,7 +405,7 @@
       "post": {
         "operationId": "sendMessageBatch",
         "summary": "Send up to 500 independent messages in one call",
-        "description": "Not a repeat of `POST /messages`. Each element carries its own channel,\nrecipient and body, and each one is answered on its own row: `index`,\nthe `id` that was created, and `error` when that element failed. One\nmistyped number does not throw away the 499 that were fine.\n\nThe rows carry ids, not message objects. Read a message back with\n`GET /messages/{id}` if you need its full state. Status is 200, not\n201, because a batch that failed entirely still answers row by row.\n",
+        "description": "Not a repeat of `POST /messages`. Each element carries its own channel,\nrecipient and body, and each one is answered on its own row: `index`,\nthe `id` that was created, and `error` when that element failed. One\nmistyped number does not throw away the 499 that were fine.\n\nThe rows carry ids, not message objects. Every message is accepted as\n`queued` and sent in the background, paced per number; read it back\nwith `GET /messages/{id}` or follow it with webhooks. Status is 200, not\n201, because a batch that failed entirely still answers row by row.\n\nToo little credit and a channel your plan does not include are reported\non the element's row (`insufficient_credits`, `channel_not_in_plan`),\nnot as an error for the whole call.\n",
         "tags": [
           "Messages"
         ],
@@ -486,9 +486,6 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          },
-          "402": {
-            "$ref": "#/components/responses/InsufficientCredits"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
@@ -859,7 +856,7 @@
         },
         "responses": {
           "201": {
-            "description": "The verification, with the outcome of the first send.",
+            "description": "The verification, with the outcome of the first send. When no\nchannel could send the code, `status` is already `failed`.\n",
             "headers": {
               "Idempotent-Replay": {
                 "$ref": "#/components/headers/Idempotent-Replay"
@@ -971,7 +968,7 @@
       "post": {
         "operationId": "checkVerification",
         "summary": "Check a code",
-        "description": "A matching code approves the verification and is used up. Five wrong\ncodes fail it. A code past its `ttl` is refused with\n`verification_expired`.\n",
+        "description": "A matching code approves the verification and is used up. A wrong code\nanswers `422 verification_code_invalid`; the error carries no\n`checks_remaining`, so read it with `GET /verifications/{id}`. Five\nwrong codes fail it. A code past its `ttl` is refused with\n`verification_expired`, and that check is what closes the verification\nand cancels its unsent messages.\n",
         "tags": [
           "Verify"
         ],
@@ -3549,7 +3546,7 @@
       "get": {
         "operationId": "listCampaignDispatches",
         "summary": "List what a campaign is sending, per contact",
-        "description": "A dispatch is the plan to send to one contact, not a message.\n`message_id` is null until the row has been processed.\n",
+        "description": "A dispatch is the plan to send to one contact, not a message.\n`message_id` is null until the row has been processed. A recurring\ncampaign has one set of dispatches per run; this lists the latest run\nunless `run` says otherwise.\n",
         "tags": [
           "Campaigns"
         ],
@@ -3569,6 +3566,16 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "name": "run",
+            "in": "query",
+            "required": false,
+            "description": "Run number to list. Defaults to the latest run.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         ],
         "responses": {
@@ -4282,7 +4289,7 @@
       "post": {
         "operationId": "startCampaign",
         "summary": "Start a campaign",
-        "description": "Legal from `draft` and `scheduled`. It builds one dispatch row per eligible contact and moves the campaign to `running` — or to `scheduled` if it is a scheduled campaign. Nothing is sent by this call itself.\n",
+        "description": "Legal from `draft` and `scheduled`. An instant campaign builds one dispatch row per eligible contact and moves to `running`; it is refused with `402 insufficient_credits` when the balance does not cover them, and with `403 request_refused` when the plan no longer includes one of its channels. A scheduled or recurring campaign moves to `scheduled`, and its recipients are counted from the group when each run starts. Nothing is sent by this call itself.\n",
         "tags": [
           "Campaigns"
         ],
@@ -4335,6 +4342,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/InsufficientCredits"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
@@ -4428,7 +4438,7 @@
       "post": {
         "operationId": "resumeCampaign",
         "summary": "Resume a paused campaign",
-        "description": "Legal from `paused`. Calling it on a campaign that never started is refused — there is nothing to resume.\n",
+        "description": "Legal from `paused`. Calling it on a campaign that never started is refused — there is nothing to resume. The campaign stays `paused` when the balance still does not cover the rest of the run (`402 insufficient_credits`) or the plan no longer includes one of its channels (`403 request_refused`).\n",
         "tags": [
           "Campaigns"
         ],
@@ -4481,6 +4491,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/InsufficientCredits"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
@@ -4627,7 +4640,7 @@
         "name": "Idempotency-Key",
         "in": "header",
         "required": false,
-        "description": "Any unique string, one per logical request. Retrying with the same key\nreturns the first answer instead of doing the work twice, and answers\nwith `Idempotent-Replay: true`.\n",
+        "description": "Any unique string, one per logical request. Retrying with the same key\nreturns the first answer instead of doing the work twice, and answers\nwith `Idempotent-Replay: true`. Server errors (`5xx`) and\n`rate_limit_exceeded` (`429`) are not remembered, because neither did\nany work; every other answer is, refusals included.\n",
         "schema": {
           "type": "string",
           "maxLength": 255
@@ -5010,7 +5023,7 @@
               "failed",
               "cancelled"
             ],
-            "description": "`delivered` means the provider accepted the message. `read` is\nWhatsApp only: the recipient opened it.\n\n`queued` also covers a message moving to another of your senders after\nits own failed. `scheduled` also covers a message sent to a group, or\nscheduled with `schedule_at`, while every sender on its channel is\nfailing: we try again every hour for up to 24 hours, then it fails.\n\n`sent`, `opened`, `clicked`, `replied` and `bounced` only ever appear\non messages born from a campaign — the tables behind single sends do\nnot record them. That is a limit of the system, not a gap in the\nmapping, so do not wait for them on a message you sent yourself.\n"
+            "description": "`delivered` means the provider accepted the message, not that the\nphone received it. When the phone reports back we fill\n`delivered_at`, and `read_at` once it is read. `read` is WhatsApp\nonly: the recipient opened it.\n\n`queued` is where a message to several recipients, a batch element,\nor an automation step waits for its turn on the number that sends it.\n\n`queued` also covers a message moving to another of your senders after\nits own failed. `scheduled` also covers a message sent to a group, or\nscheduled with `schedule_at`, while every sender on its channel is\nfailing: we try again every hour for up to 24 hours, then it fails.\n\n`sent`, `opened`, `clicked`, `replied` and `bounced` only ever appear\non messages born from a campaign — the tables behind single sends do\nnot record them. That is a limit of the system, not a gap in the\nmapping, so do not wait for them on a message you sent yourself.\n"
           },
           "to": {
             "type": [
@@ -5195,7 +5208,7 @@
           },
           "gateway_id": {
             "type": "string",
-            "description": "Optional. Left out, we pick among the live senders on this channel —\nyour own gateways, or SendKuy's shared ones when your plan lends them —\nand keep each recipient on the number that reached them before.\n\nLeft out, a message whose sender fails because of the gateway itself\n(a disconnected device, a phone without signal, credentials or balance\nthe provider refuses, a provider outage) moves to your next live sender\non the same channel, up to five senders. It keeps its id and is not\ncharged again. Your own senders come first; SendKuy's shared ones follow\nonly once all of yours were tried and your plan lends them. A failure\nthat may already have reached the recipient, or that every sender would\nhit (a number not on WhatsApp, an invalid address), is not retried\nelsewhere. When no sender is left, a message to one address fails and its\ncredit comes back; a message to a group waits for a sender (see\n`status`).\n\nNaming one sends through exactly that gateway, and it is never swapped. A `sim_` id names one\nSIM in your Android phone and works only with `channel: sms`; on any\nother channel it is refused with `validation_failed`. On WhatsApp a\ntemplate that belongs to a number fixes the sender; naming a different\ngateway is refused with `validation_failed`. When your plan sends this\nchannel only through SendKuy's shared senders, naming a gateway is\nrefused with `validation_failed` too.\n",
+            "description": "Optional. Left out, we pick among the live senders on this channel —\nyour own gateways, or SendKuy's shared ones when your plan lends them —\nand keep each recipient on the number that reached them before. On\nWhatsApp that means a number connected by QR or the Chrome extension;\nthe Cloud API is only picked for a template message. An account with\nonly a Cloud API number gets `no_sender_available` for a plain\nWhatsApp message.\n\nLeft out, a message whose sender fails because of the gateway itself\n(a disconnected device, a phone without signal, credentials or balance\nthe provider refuses, a provider outage) moves to your next live sender\non the same channel, up to five senders. It keeps its id and is not\ncharged again. Your own senders come first; SendKuy's shared ones follow\nonly once all of yours were tried and your plan lends them. A failure\nthat may already have reached the recipient, or that every sender would\nhit (a number not on WhatsApp, an invalid address), is not retried\nelsewhere. When no sender is left, a message to one address fails and its\ncredit comes back; a message to a group waits for a sender (see\n`status`).\n\nNaming one sends through exactly that gateway, and it is never swapped. A `sim_` id names one\nSIM in your Android phone and works only with `channel: sms`; on any\nother channel it is refused with `validation_failed`. On WhatsApp a\ntemplate that belongs to a number fixes the sender; naming a different\ngateway is refused with `validation_failed`. When your plan sends this\nchannel only through SendKuy's shared senders, naming a gateway is\nrefused with `validation_failed` too.\n",
             "examples": [
               "gw_9cBe3A1H-SLhW5fONWZ32wb-IIio5Ts3"
             ]
@@ -5203,7 +5216,7 @@
           "schedule_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Send later instead of now. The message comes back `scheduled`."
+            "description": "Send later instead of now. The message comes back `scheduled`.\nInclude a time zone offset, for example `2026-11-01T09:00:00+07:00`\nor `2026-11-01T02:00:00Z`; a time without one is refused with\n`validation_failed`.\n"
           }
         }
       },
@@ -5228,7 +5241,7 @@
         "required": [
           "messages"
         ],
-        "description": "Up to 500 independent messages in one call. Only the outer shape is\nvalidated up front; each element is checked as it runs, so one bad\nnumber does not throw away the 499 that were fine.\n",
+        "description": "Up to 500 independent messages in one call. The shape of every field\nin every element is validated up front, and a mistake there refuses the\nwhole call with `validation_failed`. The recipient, the gateway, the\nchannel in your plan and the credit are checked per element, so one bad\nnumber does not throw away the 499 that were fine.\n",
         "properties": {
           "messages": {
             "type": "array",
@@ -5270,7 +5283,8 @@
                 },
                 "schedule_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Same rules as `schedule_at` on `POST /messages`, including the time zone offset."
                 },
                 "media": {
                   "type": "object",
@@ -5529,7 +5543,7 @@
               "skipped",
               "undelivered"
             ],
-            "description": "`skipped` means no sender, plan or credit was available on this\nchannel. `undelivered` means a WhatsApp device sent it but no\ndelivery receipt came within 30 seconds.\n"
+            "description": "`skipped` means no sender or credit was available on this channel.\nA channel your plan lacks never gets an attempt: the request is\nrefused with `channel_not_in_plan`. `undelivered` means a WhatsApp\ndevice sent it but no delivery receipt came within 30 seconds.\n"
           },
           "reason": {
             "type": [
@@ -5609,7 +5623,8 @@
               "failed",
               "expired",
               "cancelled"
-            ]
+            ],
+            "description": "`failed` right after creation means no channel could send the code;\nthe attempts say why. `expired` is reported as soon as `expires_at`\npasses.\n"
           },
           "attempts": {
             "type": "array",
@@ -6539,6 +6554,39 @@
           }
         }
       },
+      "Recurrence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "unit",
+          "interval",
+          "until"
+        ],
+        "properties": {
+          "unit": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "year"
+            ]
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Last day a run may start on, inclusive."
+          }
+        }
+      },
       "CampaignStats": {
         "type": "object",
         "additionalProperties": false,
@@ -6641,6 +6689,10 @@
           "scheduled_at",
           "started_at",
           "completed_at",
+          "recurrence",
+          "next_run_at",
+          "current_run",
+          "paused_reason",
           "created_at",
           "updated_at"
         ],
@@ -6727,6 +6779,47 @@
             ],
             "format": "date-time"
           },
+          "recurrence": {
+            "description": "How a recurring campaign repeats. `null` for instant and scheduled campaigns.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Recurrence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_run_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the next run of a recurring campaign starts. `null` once it has no run left."
+          },
+          "current_run": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of the latest run, starting at 1. `null` for a draft."
+          },
+          "paused_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "credits",
+              "plan",
+              "account",
+              "manual",
+              "failed",
+              null
+            ],
+            "description": "Why the latest run is paused. `credits` and `plan` resume once you top up or change plan. `failed` means preparing the recipients failed; resuming tries again."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -6784,6 +6877,38 @@
           "timezone": {
             "type": "string",
             "maxLength": 64
+          },
+          "recurrence": {
+            "description": "Required when `type` is `recurring`, refused otherwise. Each run goes to everyone in the group at that moment.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "unit",
+              "interval"
+            ],
+            "properties": {
+              "unit": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week",
+                  "month",
+                  "year"
+                ]
+              },
+              "interval": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 365
+              },
+              "until": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date"
+              }
+            }
           }
         }
       },
@@ -6810,6 +6935,7 @@
           "campaign_id",
           "contact_id",
           "message_id",
+          "run",
           "channel",
           "status",
           "scheduled_at",
@@ -6848,6 +6974,10 @@
               "null"
             ],
             "description": "Null until the dispatch has been processed. A non-null value is a\n`msg_` id you can read with `GET /messages/{id}`.\n"
+          },
+          "run": {
+            "type": "integer",
+            "description": "Number of the run this dispatch belongs to, starting at 1."
           },
           "channel": {
             "type": "string",
@@ -7223,6 +7353,141 @@
             "items": {}
           }
         }
+      },
+      "ReceivedMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "object",
+          "id",
+          "conversation_id",
+          "body",
+          "created_at",
+          "updated_at",
+          "channel",
+          "from",
+          "gateway_id",
+          "provider_message_id",
+          "received_at",
+          "subject",
+          "media"
+        ],
+        "description": "The `data` of a `message.received` event. It carries every field of a\n`conversation_message` plus who wrote, on which channel and number, and\nany media.\n\nWith incoming messages kept in the SendKuy inbox, `id` and\n`conversation_id` point at the stored message and its thread. With\nincoming messages forwarded to your webhook only, nothing is stored, so\nboth are `null`: reply with `POST /messages` to `from`. A forwarded\nmessage that your endpoint never accepts after every retry is kept in the\ninbox instead.\n",
+        "properties": {
+          "object": {
+            "const": "conversation_message"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "cms_9cBe3A1H-SLhW5fONWZ32wb-IIio5Ts3"
+            ]
+          },
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "email",
+              "sms",
+              "whatsapp"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "description": "The sender, in E.164 for SMS and WhatsApp.",
+            "examples": [
+              "+6281234567890"
+            ]
+          },
+          "gateway_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The number or gateway that received the message."
+          },
+          "provider_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id the provider gave the message. Use it to skip a message you already handled."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Email only."
+          },
+          "media": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "url",
+                  "type",
+                  "mimetype",
+                  "filename"
+                ],
+                "properties": {
+                  "url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "A link to the file. For a forwarded message it expires after\nseven days, so copy the file. `null` when the channel does not\nhand us the file.\n"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "mimetype": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "filename": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
       }
     },
     "responses": {
@@ -7498,10 +7763,17 @@
       },
       {
         "name": "message.received",
-        "campaign_only": false
+        "campaign_only": false,
+        "payload": {
+          "$ref": "#/components/schemas/ReceivedMessage"
+        }
       },
       {
         "name": "campaign.completed",
+        "campaign_only": false
+      },
+      {
+        "name": "campaign.paused",
         "campaign_only": false
       },
       {

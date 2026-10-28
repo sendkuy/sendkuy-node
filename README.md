@@ -16,13 +16,22 @@ Send WhatsApp, SMS and email from Node.js, Bun, Deno and edge runtimes, with typ
 
 [Baca dalam Bahasa Indonesia](README.id.md)
 
+## What you can send
+
+- **WhatsApp** from a number connected by QR code, the [SendKuy WA Gateway Chrome extension](https://chromewebstore.google.com/detail/sendkuy-wa-gateway/kdopgnbocfeoehhjbolfmibnmoicdofc), or the WhatsApp Cloud API ([WhatsApp API](https://sendkuy.com/channels/whatsapp?utm_source=readme&utm_medium=sdk&utm_campaign=sendkuy-node)).
+- **SMS** through an Android phone running SendKuy Gateway, or an SMS provider ([SMS gateway](https://sendkuy.com/channels/sms?utm_source=readme&utm_medium=sdk&utm_campaign=sendkuy-node)).
+- **Email** from your own domain ([email API](https://sendkuy.com/channels/email?utm_source=readme&utm_medium=sdk&utm_campaign=sendkuy-node)).
+- **OTP codes** with `verifications`, falling back from WhatsApp to SMS.
+- **Bulk sends** to several recipients or a batch of up to 500, paced per number for you.
+- **Two-way conversations** for your helpdesk: incoming messages arrive as `message.received` webhooks.
+
 ## Install
 
 ```bash
 npm i sendkuy
 ```
 
-Zero dependencies: the SDK uses only `fetch` and Web Crypto. CI tests Node.js 20.3+, Bun and Deno on every change, and Cloudflare Workers and Vercel Edge provide the same two APIs. ESM and CommonJS both work. Date parameters such as `created_after` and `schedule_at` accept a `Date` or an ISO 8601 string.
+Zero dependencies: the SDK uses only `fetch` and Web Crypto. CI tests Node.js 20.3+, Bun and Deno on every change, and Cloudflare Workers and Vercel Edge provide the same two APIs. ESM and CommonJS both work. Date parameters such as `created_after` and `schedule_at` accept a `Date` or an ISO 8601 string with a time zone offset.
 
 ## Quickstart
 
@@ -120,7 +129,7 @@ Verify against the raw body, before any JSON parsing:
 
 ```ts
 // app/api/sendkuy/route.ts (Next.js)
-import { verifyWebhook } from 'sendkuy';
+import { verifyWebhook, type ReceivedMessage } from 'sendkuy';
 
 export async function POST(request: Request) {
   try {
@@ -131,7 +140,8 @@ export async function POST(request: Request) {
     });
 
     if (event.event === 'message.received') {
-      // ...
+      const message = event.data as ReceivedMessage;
+      // message.from, message.channel, message.body, message.provider_message_id
     }
 
     return new Response(null, { status: 200 });
@@ -144,6 +154,8 @@ export async function POST(request: Request) {
 With Express, read the body raw: `app.post('/sendkuy', express.raw({ type: 'application/json' }), …)` and pass `req.body` as `payload`.
 
 `x-sendkuy-event-id` stays the same across SendKuy's retries of one delivery: use it to skip duplicates. Use the endpoint secret in full, `whsec_` included, and answer within 10 seconds.
+
+`message.received` carries who wrote (`from`), the channel, the number that received it and any media. When your account forwards incoming messages to your webhook only, nothing is stored in SendKuy and `id` and `conversation_id` are `null`: reply with `sendkuy.messages.send({ channel: message.channel, to: [message.from], body })`.
 
 ## Server-side only
 

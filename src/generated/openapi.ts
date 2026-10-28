@@ -58,6 +58,19 @@ export interface paths {
          *     object back per recipient. A message is one row of delivery: one
          *     person, one status. Sending to three numbers returns three objects.
          *
+         *     Every recipient, its sender, and the credit for all of them are checked
+         *     before anything is sent. A missing contact or group, a contact without
+         *     an address on the channel, no sender for one of the recipients, or too
+         *     little credit refuses the whole call and nobody receives anything.
+         *
+         *     One recipient is sent while you wait, and its `status` is the outcome.
+         *     More than one recipient (a `grp_` group counts as its members) is
+         *     accepted, answered at once as `queued`, and sent in the background,
+         *     paced per number to keep it healthy. Follow each message with webhooks
+         *     or `GET /messages/{id}`. For bulk sends use several `to` or
+         *     `POST /messages/batch`: both are paced for you. Looping over single
+         *     sends is not.
+         *
          *     Recipients must be in E.164 form, with the `+`. A local number is
          *     refused rather than guessed: guessing the wrong country sends a
          *     stranger a message and bills you for it.
@@ -85,9 +98,14 @@ export interface paths {
          *     the `id` that was created, and `error` when that element failed. One
          *     mistyped number does not throw away the 499 that were fine.
          *
-         *     The rows carry ids, not message objects. Read a message back with
-         *     `GET /messages/{id}` if you need its full state. Status is 200, not
+         *     The rows carry ids, not message objects. Every message is accepted as
+         *     `queued` and sent in the background, paced per number; read it back
+         *     with `GET /messages/{id}` or follow it with webhooks. Status is 200, not
          *     201, because a batch that failed entirely still answers row by row.
+         *
+         *     Too little credit and a channel your plan does not include are reported
+         *     on the element's row (`insufficient_credits`, `channel_not_in_plan`),
+         *     not as an error for the whole call.
          */
         post: operations["sendMessageBatch"];
         delete?: never;
@@ -242,9 +260,12 @@ export interface paths {
         put?: never;
         /**
          * Check a code
-         * @description A matching code approves the verification and is used up. Five wrong
-         *     codes fail it. A code past its `ttl` is refused with
-         *     `verification_expired`.
+         * @description A matching code approves the verification and is used up. A wrong code
+         *     answers `422 verification_code_invalid`; the error carries no
+         *     `checks_remaining`, so read it with `GET /verifications/{id}`. Five
+         *     wrong codes fail it. A code past its `ttl` is refused with
+         *     `verification_expired`, and that check is what closes the verification
+         *     and cancels its unsent messages.
          */
         post: operations["checkVerification"];
         delete?: never;
@@ -686,7 +707,9 @@ export interface paths {
         /**
          * List what a campaign is sending, per contact
          * @description A dispatch is the plan to send to one contact, not a message.
-         *     `message_id` is null until the row has been processed.
+         *     `message_id` is null until the row has been processed. A recurring
+         *     campaign has one set of dispatches per run; this lists the latest run
+         *     unless `run` says otherwise.
          */
         get: operations["listCampaignDispatches"];
         put?: never;
@@ -899,7 +922,7 @@ export interface paths {
         put?: never;
         /**
          * Start a campaign
-         * @description Legal from `draft` and `scheduled`. It builds one dispatch row per eligible contact and moves the campaign to `running` — or to `scheduled` if it is a scheduled campaign. Nothing is sent by this call itself.
+         * @description Legal from `draft` and `scheduled`. An instant campaign builds one dispatch row per eligible contact and moves to `running`; it is refused with `402 insufficient_credits` when the balance does not cover them, and with `403 request_refused` when the plan no longer includes one of its channels. A scheduled or recurring campaign moves to `scheduled`, and its recipients are counted from the group when each run starts. Nothing is sent by this call itself.
          */
         post: operations["startCampaign"];
         delete?: never;
@@ -939,7 +962,7 @@ export interface paths {
         put?: never;
         /**
          * Resume a paused campaign
-         * @description Legal from `paused`. Calling it on a campaign that never started is refused — there is nothing to resume.
+         * @description Legal from `paused`. Calling it on a campaign that never started is refused — there is nothing to resume. The campaign stays `paused` when the balance still does not cover the rest of the run (`402 insufficient_credits`) or the plan no longer includes one of its channels (`403 request_refused`).
          */
         post: operations["resumeCampaign"];
         delete?: never;
@@ -1051,8 +1074,13 @@ export interface components {
             /** @enum {string} */
             channel: "email" | "sms" | "whatsapp";
             /**
-             * @description `delivered` means the provider accepted the message. `read` is
-             *     WhatsApp only: the recipient opened it.
+             * @description `delivered` means the provider accepted the message, not that the
+             *     phone received it. When the phone reports back we fill
+             *     `delivered_at`, and `read_at` once it is read. `read` is WhatsApp
+             *     only: the recipient opened it.
+             *
+             *     `queued` is where a message to several recipients, a batch element,
+             *     or an automation step waits for its turn on the number that sends it.
              *
              *     `queued` also covers a message moving to another of your senders after
              *     its own failed. `scheduled` also covers a message sent to a group, or
@@ -1149,7 +1177,11 @@ export interface components {
             /**
              * @description Optional. Left out, we pick among the live senders on this channel —
              *     your own gateways, or SendKuy's shared ones when your plan lends them —
-             *     and keep each recipient on the number that reached them before.
+             *     and keep each recipient on the number that reached them before. On
+             *     WhatsApp that means a number connected by QR or the Chrome extension;
+             *     the Cloud API is only picked for a template message. An account with
+             *     only a Cloud API number gets `no_sender_available` for a plain
+             *     WhatsApp message.
              *
              *     Left out, a message whose sender fails because of the gateway itself
              *     (a disconnected device, a phone without signal, credentials or balance
@@ -1176,6 +1208,9 @@ export interface components {
             /**
              * Format: date-time
              * @description Send later instead of now. The message comes back `scheduled`.
+             *     Include a time zone offset, for example `2026-11-01T09:00:00+07:00`
+             *     or `2026-11-01T02:00:00Z`; a time without one is refused with
+             *     `validation_failed`.
              */
             schedule_at?: string;
         };
@@ -1189,8 +1224,10 @@ export interface components {
             data: Record<string, never>[];
         };
         /**
-         * @description Up to 500 independent messages in one call. Only the outer shape is
-         *     validated up front; each element is checked as it runs, so one bad
+         * @description Up to 500 independent messages in one call. The shape of every field
+         *     in every element is validated up front, and a mistake there refuses the
+         *     whole call with `validation_failed`. The recipient, the gateway, the
+         *     channel in your plan and the credit are checked per element, so one bad
          *     number does not throw away the 499 that were fine.
          */
         SendMessageBatchRequest: {
@@ -1206,7 +1243,10 @@ export interface components {
                 subject?: string;
                 /** @description Optional. Same rules as `gateway_id` on `POST /messages`. */
                 gateway_id?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Same rules as `schedule_at` on `POST /messages`, including the time zone offset.
+                 */
                 schedule_at?: string;
                 media?: {
                     /** Format: uri */
@@ -1313,9 +1353,10 @@ export interface components {
             /** @description The message that carried the code, readable with `GET /messages/{id}`. */
             message_id: string | null;
             /**
-             * @description `skipped` means no sender, plan or credit was available on this
-             *     channel. `undelivered` means a WhatsApp device sent it but no
-             *     delivery receipt came within 30 seconds.
+             * @description `skipped` means no sender or credit was available on this channel.
+             *     A channel your plan lacks never gets an attempt: the request is
+             *     refused with `channel_not_in_plan`. `undelivered` means a WhatsApp
+             *     device sent it but no delivery receipt came within 30 seconds.
              * @enum {string}
              */
             outcome: "sent" | "delivered" | "failed" | "skipped" | "undelivered";
@@ -1337,7 +1378,12 @@ export interface components {
             channels: ("whatsapp" | "sms" | "email")[];
             /** @description The channel of the latest attempt. */
             channel: string | null;
-            /** @enum {string} */
+            /**
+             * @description `failed` right after creation means no channel could send the code;
+             *     the attempts say why. `expired` is reported as soon as `expires_at`
+             *     passes.
+             * @enum {string}
+             */
             status: "pending" | "approved" | "failed" | "expired" | "cancelled";
             attempts: components["schemas"]["VerificationAttempt"][];
             checks_remaining: number;
@@ -1772,6 +1818,16 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        Recurrence: {
+            /** @enum {string} */
+            unit: "day" | "week" | "month" | "year";
+            interval: number;
+            /**
+             * Format: date
+             * @description Last day a run may start on, inclusive.
+             */
+            until: string | null;
+        };
         /**
          * @description Counts roll up: a higher state implies every lower one was passed, so
          *     `opened` includes what was clicked and replied. `delivered` counts a
@@ -1826,6 +1882,20 @@ export interface components {
             started_at: string | null;
             /** Format: date-time */
             completed_at: string | null;
+            /** @description How a recurring campaign repeats. `null` for instant and scheduled campaigns. */
+            recurrence: components["schemas"]["Recurrence"] | null;
+            /**
+             * Format: date-time
+             * @description When the next run of a recurring campaign starts. `null` once it has no run left.
+             */
+            next_run_at: string | null;
+            /** @description Number of the latest run, starting at 1. `null` for a draft. */
+            current_run: number | null;
+            /**
+             * @description Why the latest run is paused. `credits` and `plan` resume once you top up or change plan. `failed` means preparing the recipients failed; resuming tries again.
+             * @enum {string|null}
+             */
+            paused_reason: "credits" | "plan" | "account" | "manual" | "failed" | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1847,6 +1917,14 @@ export interface components {
             /** Format: date-time */
             schedule_at?: string;
             timezone?: string;
+            /** @description Required when `type` is `recurring`, refused otherwise. Each run goes to everyone in the group at that moment. */
+            recurrence?: {
+                /** @enum {string} */
+                unit: "day" | "week" | "month" | "year";
+                interval: number;
+                /** Format: date */
+                until?: string | null;
+            };
         };
         /**
          * @description What `GET /campaigns/{id}` answers. The list endpoint leaves `stats` out
@@ -1871,6 +1949,8 @@ export interface components {
              *     `msg_` id you can read with `GET /messages/{id}`.
              */
             message_id: string | null;
+            /** @description Number of the run this dispatch belongs to, starting at 1. */
+            run: number;
             /** @enum {string} */
             channel: "email" | "sms" | "whatsapp";
             /** @enum {string} */
@@ -2002,6 +2082,56 @@ export interface components {
             workflows_triggered: number;
             contacts_enrolled: number;
             errors: unknown[];
+        };
+        /**
+         * @description The `data` of a `message.received` event. It carries every field of a
+         *     `conversation_message` plus who wrote, on which channel and number, and
+         *     any media.
+         *
+         *     With incoming messages kept in the SendKuy inbox, `id` and
+         *     `conversation_id` point at the stored message and its thread. With
+         *     incoming messages forwarded to your webhook only, nothing is stored, so
+         *     both are `null`: reply with `POST /messages` to `from`. A forwarded
+         *     message that your endpoint never accepts after every retry is kept in the
+         *     inbox instead.
+         */
+        ReceivedMessage: {
+            /** @constant */
+            object: "conversation_message";
+            /** @example cms_9cBe3A1H-SLhW5fONWZ32wb-IIio5Ts3 */
+            id: string | null;
+            conversation_id: string | null;
+            body: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @enum {string} */
+            channel: "email" | "sms" | "whatsapp";
+            /**
+             * @description The sender, in E.164 for SMS and WhatsApp.
+             * @example +6281234567890
+             */
+            from: string;
+            /** @description The number or gateway that received the message. */
+            gateway_id: string | null;
+            /** @description The id the provider gave the message. Use it to skip a message you already handled. */
+            provider_message_id: string | null;
+            /** Format: date-time */
+            received_at: string;
+            /** @description Email only. */
+            subject: string | null;
+            media: null | {
+                /**
+                 * @description A link to the file. For a forwarded message it expires after
+                 *     seven days, so copy the file. `null` when the channel does not
+                 *     hand us the file.
+                 */
+                url: string | null;
+                type: string;
+                mimetype: string | null;
+                filename: string | null;
+            };
         };
     };
     responses: {
@@ -2155,7 +2285,9 @@ export interface components {
         /**
          * @description Any unique string, one per logical request. Retrying with the same key
          *     returns the first answer instead of doing the work twice, and answers
-         *     with `Idempotent-Replay: true`.
+         *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+         *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+         *     any work; every other answer is, refusals included.
          */
         IdempotencyKey: string;
         /** @description The prefixed id of the object. */
@@ -2290,7 +2422,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2333,7 +2467,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2359,7 +2495,6 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            402: components["responses"]["InsufficientCredits"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
@@ -2402,7 +2537,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2441,7 +2578,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2482,7 +2621,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2524,7 +2665,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2537,7 +2680,10 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The verification, with the outcome of the first send. */
+            /**
+             * @description The verification, with the outcome of the first send. When no
+             *     channel could send the code, `status` is already `failed`.
+             */
             201: {
                 headers: {
                     "Idempotent-Replay": components["headers"]["Idempotent-Replay"];
@@ -2594,7 +2740,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2697,7 +2845,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2748,7 +2898,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2848,7 +3000,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2886,7 +3040,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2984,7 +3140,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3052,7 +3210,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3090,7 +3250,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3133,7 +3295,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3176,7 +3340,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3249,7 +3415,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3317,7 +3485,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3355,7 +3525,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3489,7 +3661,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3557,7 +3731,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3595,7 +3771,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3702,7 +3880,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3770,7 +3950,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3808,7 +3990,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3852,6 +4036,8 @@ export interface operations {
                 starting_after?: components["parameters"]["StartingAfter"];
                 /** @description Rows per page. Defaults to 20, capped at 100. */
                 limit?: components["parameters"]["Limit"];
+                /** @description Run number to list. Defaults to the latest run. */
+                run?: number;
             };
             header?: never;
             path: {
@@ -3979,7 +4165,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4017,7 +4205,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4155,7 +4345,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4223,7 +4415,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4249,6 +4443,7 @@ export interface operations {
             };
             400: components["responses"]["RequestRefused"];
             401: components["responses"]["Unauthorized"];
+            402: components["responses"]["InsufficientCredits"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
@@ -4262,7 +4457,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4301,7 +4498,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4327,6 +4526,7 @@ export interface operations {
             };
             400: components["responses"]["RequestRefused"];
             401: components["responses"]["Unauthorized"];
+            402: components["responses"]["InsufficientCredits"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
@@ -4340,7 +4540,9 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`.
+                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
+                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
+                 *     any work; every other answer is, refusals included.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };

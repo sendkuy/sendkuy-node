@@ -10,6 +10,7 @@ export const WEBHOOK_EVENTS = [
   'message.failed',
   'message.received',
   'campaign.completed',
+  'campaign.paused',
   'contact.created',
   'contact.updated',
 ] as const;

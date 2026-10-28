@@ -39,6 +39,7 @@ export type CampaignWithStats = Schemas['CampaignWithStats'];
 export type CampaignDispatch = Schemas['CampaignDispatch'];
 export type Conversation = Schemas['Conversation'];
 export type ConversationMessage = Schemas['ConversationMessage'];
+export type ReceivedMessage = Schemas['ReceivedMessage'];
 export type Workflow = Schemas['Workflow'];
 export type WorkflowExecution = Schemas['WorkflowExecution'];
 export type WorkflowTrigger = Schemas['WorkflowTrigger'];
