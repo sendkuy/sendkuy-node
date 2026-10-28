@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Version 1.x speaks SendKuy API v1.
 
+## [1.2.0] - 2026-10-29
+
+### Added
+
+- `Account` now carries `scopes`, the scopes of the key that made the call. Other keys on the same account are not listed.
+
+### Changed
+
+- The bundled API contract follows SendKuy API v1 as of this release.
+
 ## [1.1.0] - 2026-10-28
 
 ### Added

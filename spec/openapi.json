@@ -4640,7 +4640,7 @@
         "name": "Idempotency-Key",
         "in": "header",
         "required": false,
-        "description": "Any unique string, one per logical request. Retrying with the same key\nreturns the first answer instead of doing the work twice, and answers\nwith `Idempotent-Replay: true`. Server errors (`5xx`) and\n`rate_limit_exceeded` (`429`) are not remembered, because neither did\nany work; every other answer is, refusals included.\n",
+        "description": "Any unique string, one per logical request. Retrying with the same key\nreturns the first answer instead of doing the work twice, and answers\nwith `Idempotent-Replay: true`. Every answer is remembered, refusals\nincluded, except `rate_limit_exceeded` (`429`) and a server error\n(`5xx`) that left nothing behind. A server error after a message was\nhanded over is remembered as that message, so the retry returns it\ninstead of sending again. A key belongs to your account, across\nendpoints and API keys.\n",
         "schema": {
           "type": "string",
           "maxLength": 255
@@ -4680,7 +4680,8 @@
           "email",
           "plan",
           "credits",
-          "rate_limit"
+          "rate_limit",
+          "scopes"
         ],
         "properties": {
           "object": {
@@ -4722,6 +4723,20 @@
           "rate_limit": {
             "type": "integer",
             "description": "Requests per minute this key may make."
+          },
+          "scopes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes of the key that made this call, sorted. Other keys on the same account are not listed.",
+            "examples": [
+              [
+                "account:read",
+                "messages:write"
+              ]
+            ]
           }
         }
       },
