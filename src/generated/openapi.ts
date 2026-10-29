@@ -1019,6 +1019,14 @@ export interface components {
             credits: Record<string, never> | null;
             /** @description Requests per minute this key may make. */
             rate_limit: number;
+            /**
+             * @description The scopes of the key that made this call, sorted. Other keys on the same account are not listed.
+             * @example [
+             *       "account:read",
+             *       "messages:write"
+             *     ]
+             */
+            scopes: string[];
         };
         /** @description Every error this API can answer with. */
         ErrorCode: "missing_api_key" | "invalid_api_key" | "api_key_revoked" | "api_key_expired" | "subscription_expired" | "account_suspended" | "insufficient_scope" | "channel_not_in_plan" | "insufficient_credits" | "validation_failed" | "no_sender_available" | "sender_unavailable" | "verification_code_invalid" | "verification_expired" | "verification_not_pending" | "request_refused" | "resource_not_found" | "method_not_allowed" | "idempotency_key_reused" | "idempotency_request_in_progress" | "rate_limit_exceeded" | "internal_error";
@@ -2285,9 +2293,12 @@ export interface components {
         /**
          * @description Any unique string, one per logical request. Retrying with the same key
          *     returns the first answer instead of doing the work twice, and answers
-         *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-         *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-         *     any work; every other answer is, refusals included.
+         *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+         *     included, except `rate_limit_exceeded` (`429`) and a server error
+         *     (`5xx`) that left nothing behind. A server error after a message was
+         *     handed over is remembered as that message, so the retry returns it
+         *     instead of sending again. A key belongs to your account, across
+         *     endpoints and API keys.
          */
         IdempotencyKey: string;
         /** @description The prefixed id of the object. */
@@ -2422,9 +2433,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2467,9 +2481,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2537,9 +2554,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2578,9 +2598,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2621,9 +2644,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2665,9 +2691,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2740,9 +2769,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2845,9 +2877,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2898,9 +2933,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3000,9 +3038,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3040,9 +3081,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3140,9 +3184,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3210,9 +3257,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3250,9 +3300,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3295,9 +3348,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3340,9 +3396,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3415,9 +3474,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3485,9 +3547,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3525,9 +3590,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3661,9 +3729,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3731,9 +3802,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3771,9 +3845,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3880,9 +3957,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3950,9 +4030,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3990,9 +4073,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4165,9 +4251,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4205,9 +4294,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4345,9 +4437,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4415,9 +4510,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4457,9 +4555,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4498,9 +4599,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4540,9 +4644,12 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Server errors (`5xx`) and
-                 *     `rate_limit_exceeded` (`429`) are not remembered, because neither did
-                 *     any work; every other answer is, refusals included.
+                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
+                 *     included, except `rate_limit_exceeded` (`429`) and a server error
+                 *     (`5xx`) that left nothing behind. A server error after a message was
+                 *     handed over is remembered as that message, so the retry returns it
+                 *     instead of sending again. A key belongs to your account, across
+                 *     endpoints and API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
