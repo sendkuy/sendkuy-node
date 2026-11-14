@@ -344,6 +344,24 @@
                     "subject": "Your order",
                     "body": "<p>Your order is on its way.</p>"
                   }
+                },
+                "newsletter": {
+                  "summary": "A newsletter with your own one-click unsubscribe",
+                  "value": {
+                    "channel": "email",
+                    "to": [
+                      "andi@example.com"
+                    ],
+                    "subject": "What is new this month",
+                    "body": "<p>Three things we shipped.</p>",
+                    "from_name": "Example Store",
+                    "reply_to": "support@example.com",
+                    "headers": {
+                      "List-Unsubscribe": "<https://example.com/news/unsubscribe/42?signature=abc>",
+                      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                    },
+                    "transactional": true
+                  }
                 }
               }
             }
@@ -4640,7 +4658,7 @@
         "name": "Idempotency-Key",
         "in": "header",
         "required": false,
-        "description": "Any unique string, one per logical request. Retrying with the same key\nreturns the first answer instead of doing the work twice, and answers\nwith `Idempotent-Replay: true`. Every answer is remembered, refusals\nincluded, except `rate_limit_exceeded` (`429`) and a server error\n(`5xx`) that left nothing behind. A server error after a message was\nhanded over is remembered as that message, so the retry returns it\ninstead of sending again. A key belongs to your account, across\nendpoints and API keys.\n",
+        "description": "Any unique string, one per logical request. Retrying with the same key\nreturns the first answer instead of doing the work twice, and answers\nwith `Idempotent-Replay: true`. An answer is remembered once something\nwent out. Not remembered, so the same key runs the request again:\n`rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing\nbehind, and on `POST /messages` and `POST /messages/batch` a refusal\n(`4xx`) or a send whose every message `failed` because of its sender\n(credentials, balance, a disconnected device). A failure that may still\nhave reached the recipient, such as a provider timeout, stays remembered.\nA server error after a message was handed over is remembered as that\nmessage, so the retry returns it instead of sending again. A batch is\nalways remembered. A key belongs to your account, across endpoints and\nAPI keys.\n",
         "schema": {
           "type": "string",
           "maxLength": 255
@@ -5221,6 +5239,41 @@
               }
             }
           },
+          "reply_to": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 255,
+            "description": "Email only. The address replies go to. Left out, replies come back to\nyour SendKuy inbox when your account receives replies, otherwise to\nthe gateway's address.\n"
+          },
+          "from_name": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Email only. The name recipients see next to the sender address. The\naddress itself is always the gateway's. Left out, most providers show\nthe gateway's name.\n"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Email only. Your own one-click unsubscribe, for newsletters and other\nbulk mail. Only these two headers are accepted; any other name is\nrefused with `validation_failed` and named in `param`. Names match\nregardless of case.\n\nWhen you send them, they replace the unsubscribe SendKuy would add,\non every sender including SendKuy's shared senders. Left out, an\nemail through your own gateway carries no unsubscribe from SendKuy,\nand one through SendKuy's shared senders carries SendKuy's, unless\n`transactional` is `true`. Signed with DKIM when SendKuy signs the\nmessage.\n",
+            "properties": {
+              "List-Unsubscribe": {
+                "type": "string",
+                "maxLength": 900,
+                "description": "One or more `<uri>` entries separated by commas, each `https:` or\n`mailto:`, with at least one `https:` link. ASCII only, so\npercent-encode anything else in the link; line breaks are\nrefused. Kept to one header line so every mailbox can read it.\n",
+                "examples": [
+                  "<https://example.com/unsubscribe/42?signature=abc>"
+                ]
+              },
+              "List-Unsubscribe-Post": {
+                "type": "string",
+                "const": "List-Unsubscribe=One-Click",
+                "description": "Only together with `List-Unsubscribe`."
+              }
+            }
+          },
+          "transactional": {
+            "type": "boolean",
+            "description": "Email only. `true` sends the subject and body exactly as you gave\nthem: no open pixel, no rewritten links, no spintax (`{a|b}`), no\nvariables (`{{name}}`), and no unsubscribe from SendKuy on any\nsender. Someone who unsubscribed still receives it; a bounce or a\ncomplaint still stops it. Use it for password resets, receipts and\nother mail a person asked for.\n\nLeft out or `false`, an email body is processed: spintax picks one\noption, variables are filled from the contact, and open and click\ntracking follow your account's settings.\n"
+          },
           "gateway_id": {
             "type": "string",
             "description": "Optional. Left out, we pick among the live senders on this channel —\nyour own gateways, or SendKuy's shared ones when your plan lends them —\nand keep each recipient on the number that reached them before. On\nWhatsApp that means a number connected by QR or the Chrome extension;\nthe Cloud API is only picked for a template message. An account with\nonly a Cloud API number gets `no_sender_available` for a plain\nWhatsApp message.\n\nLeft out, a message whose sender fails because of the gateway itself\n(a disconnected device, a phone without signal, credentials or balance\nthe provider refuses, a provider outage) moves to your next live sender\non the same channel, up to five senders. It keeps its id and is not\ncharged again. Your own senders come first; SendKuy's shared ones follow\nonly once all of yours were tried and your plan lends them. A failure\nthat may already have reached the recipient, or that every sender would\nhit (a number not on WhatsApp, an invalid address), is not retried\nelsewhere. When no sender is left, a message to one address fails and its\ncredit comes back; a message to a group waits for a sender (see\n`status`).\n\nNaming one sends through exactly that gateway, and it is never swapped. A `sim_` id names one\nSIM in your Android phone and works only with `channel: sms`; on any\nother channel it is refused with `validation_failed`. On WhatsApp a\ntemplate that belongs to a number fixes the sender; naming a different\ngateway is refused with `validation_failed`. When your plan sends this\nchannel only through SendKuy's shared senders, naming a gateway is\nrefused with `validation_failed` too.\n",
@@ -5300,6 +5353,36 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "Same rules as `schedule_at` on `POST /messages`, including the time zone offset."
+                },
+                "reply_to": {
+                  "type": "string",
+                  "format": "email",
+                  "maxLength": 255,
+                  "description": "Email only. Same rules as `reply_to` on `POST /messages`."
+                },
+                "from_name": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "description": "Email only. Same rules as `from_name` on `POST /messages`."
+                },
+                "headers": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Email only. Same rules as `headers` on `POST /messages`.",
+                  "properties": {
+                    "List-Unsubscribe": {
+                      "type": "string",
+                      "maxLength": 900
+                    },
+                    "List-Unsubscribe-Post": {
+                      "type": "string",
+                      "const": "List-Unsubscribe=One-Click"
+                    }
+                  }
+                },
+                "transactional": {
+                  "type": "boolean",
+                  "description": "Email only. Same rules as `transactional` on `POST /messages`."
                 },
                 "media": {
                   "type": "object",
