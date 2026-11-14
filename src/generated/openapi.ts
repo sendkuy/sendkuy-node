@@ -1183,6 +1183,60 @@ export interface components {
                 filename?: string;
             }[];
             /**
+             * Format: email
+             * @description Email only. The address replies go to. Left out, replies come back to
+             *     your SendKuy inbox when your account receives replies, otherwise to
+             *     the gateway's address.
+             */
+            reply_to?: string;
+            /**
+             * @description Email only. The name recipients see next to the sender address. The
+             *     address itself is always the gateway's. Left out, most providers show
+             *     the gateway's name.
+             */
+            from_name?: string;
+            /**
+             * @description Email only. Your own one-click unsubscribe, for newsletters and other
+             *     bulk mail. Only these two headers are accepted; any other name is
+             *     refused with `validation_failed` and named in `param`. Names match
+             *     regardless of case.
+             *
+             *     When you send them, they replace the unsubscribe SendKuy would add,
+             *     on every sender including SendKuy's shared senders. Left out, an
+             *     email through your own gateway carries no unsubscribe from SendKuy,
+             *     and one through SendKuy's shared senders carries SendKuy's, unless
+             *     `transactional` is `true`. Signed with DKIM when SendKuy signs the
+             *     message.
+             */
+            headers?: {
+                /**
+                 * @description One or more `<uri>` entries separated by commas, each `https:` or
+                 *     `mailto:`, with at least one `https:` link. ASCII only, so
+                 *     percent-encode anything else in the link; line breaks are
+                 *     refused. Kept to one header line so every mailbox can read it.
+                 * @example <https://example.com/unsubscribe/42?signature=abc>
+                 */
+                "List-Unsubscribe"?: string;
+                /**
+                 * @description Only together with `List-Unsubscribe`.
+                 * @constant
+                 */
+                "List-Unsubscribe-Post"?: "List-Unsubscribe=One-Click";
+            };
+            /**
+             * @description Email only. `true` sends the subject and body exactly as you gave
+             *     them: no open pixel, no rewritten links, no spintax (`{a|b}`), no
+             *     variables (`{{name}}`), and no unsubscribe from SendKuy on any
+             *     sender. Someone who unsubscribed still receives it; a bounce or a
+             *     complaint still stops it. Use it for password resets, receipts and
+             *     other mail a person asked for.
+             *
+             *     Left out or `false`, an email body is processed: spintax picks one
+             *     option, variables are filled from the contact, and open and click
+             *     tracking follow your account's settings.
+             */
+            transactional?: boolean;
+            /**
              * @description Optional. Left out, we pick among the live senders on this channel —
              *     your own gateways, or SendKuy's shared ones when your plan lends them —
              *     and keep each recipient on the number that reached them before. On
@@ -1256,6 +1310,21 @@ export interface components {
                  * @description Same rules as `schedule_at` on `POST /messages`, including the time zone offset.
                  */
                 schedule_at?: string;
+                /**
+                 * Format: email
+                 * @description Email only. Same rules as `reply_to` on `POST /messages`.
+                 */
+                reply_to?: string;
+                /** @description Email only. Same rules as `from_name` on `POST /messages`. */
+                from_name?: string;
+                /** @description Email only. Same rules as `headers` on `POST /messages`. */
+                headers?: {
+                    "List-Unsubscribe"?: string;
+                    /** @constant */
+                    "List-Unsubscribe-Post"?: "List-Unsubscribe=One-Click";
+                };
+                /** @description Email only. Same rules as `transactional` on `POST /messages`. */
+                transactional?: boolean;
                 media?: {
                     /** Format: uri */
                     url: string;
@@ -2293,12 +2362,17 @@ export interface components {
         /**
          * @description Any unique string, one per logical request. Retrying with the same key
          *     returns the first answer instead of doing the work twice, and answers
-         *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-         *     included, except `rate_limit_exceeded` (`429`) and a server error
-         *     (`5xx`) that left nothing behind. A server error after a message was
-         *     handed over is remembered as that message, so the retry returns it
-         *     instead of sending again. A key belongs to your account, across
-         *     endpoints and API keys.
+         *     with `Idempotent-Replay: true`. An answer is remembered once something
+         *     went out. Not remembered, so the same key runs the request again:
+         *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+         *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+         *     (`4xx`) or a send whose every message `failed` because of its sender
+         *     (credentials, balance, a disconnected device). A failure that may still
+         *     have reached the recipient, such as a provider timeout, stays remembered.
+         *     A server error after a message was handed over is remembered as that
+         *     message, so the retry returns it instead of sending again. A batch is
+         *     always remembered. A key belongs to your account, across endpoints and
+         *     API keys.
          */
         IdempotencyKey: string;
         /** @description The prefixed id of the object. */
@@ -2433,12 +2507,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2481,12 +2560,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2554,12 +2638,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2598,12 +2687,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2644,12 +2738,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2691,12 +2790,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2769,12 +2873,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2877,12 +2986,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -2933,12 +3047,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3038,12 +3157,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3081,12 +3205,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3184,12 +3313,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3257,12 +3391,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3300,12 +3439,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3348,12 +3492,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3396,12 +3545,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3474,12 +3628,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3547,12 +3706,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3590,12 +3754,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3729,12 +3898,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3802,12 +3976,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3845,12 +4024,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -3957,12 +4141,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4030,12 +4219,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4073,12 +4267,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4251,12 +4450,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4294,12 +4498,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4437,12 +4646,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4510,12 +4724,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4555,12 +4774,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4599,12 +4823,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -4644,12 +4873,17 @@ export interface operations {
                 /**
                  * @description Any unique string, one per logical request. Retrying with the same key
                  *     returns the first answer instead of doing the work twice, and answers
-                 *     with `Idempotent-Replay: true`. Every answer is remembered, refusals
-                 *     included, except `rate_limit_exceeded` (`429`) and a server error
-                 *     (`5xx`) that left nothing behind. A server error after a message was
-                 *     handed over is remembered as that message, so the retry returns it
-                 *     instead of sending again. A key belongs to your account, across
-                 *     endpoints and API keys.
+                 *     with `Idempotent-Replay: true`. An answer is remembered once something
+                 *     went out. Not remembered, so the same key runs the request again:
+                 *     `rate_limit_exceeded` (`429`), a server error (`5xx`) that left nothing
+                 *     behind, and on `POST /messages` and `POST /messages/batch` a refusal
+                 *     (`4xx`) or a send whose every message `failed` because of its sender
+                 *     (credentials, balance, a disconnected device). A failure that may still
+                 *     have reached the recipient, such as a provider timeout, stays remembered.
+                 *     A server error after a message was handed over is remembered as that
+                 *     message, so the retry returns it instead of sending again. A batch is
+                 *     always remembered. A key belongs to your account, across endpoints and
+                 *     API keys.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };

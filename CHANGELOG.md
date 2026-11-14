@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Version 1.x speaks SendKuy API v1.
 
+## [1.3.0] - 2026-11-14
+
+### Added
+
+- Email in `SendMessageParams` and in each `SendMessageBatchParams` element accepts `reply_to`, `from_name`, `headers` (`List-Unsubscribe` and `List-Unsubscribe-Post`, for your own one-click unsubscribe) and `transactional`, which sends the subject and body exactly as given, without tracking or SendKuy's unsubscribe.
+
+### Changed
+
+- Documentation follows SendKuy API v1 as of this release: on `messages.send` and `messages.sendBatch`, a refusal (`4xx`) and a send whose every message failed because of its sender are no longer remembered under their `Idempotency-Key`, so retrying with the same key after topping up or fixing the sender runs the request again.
+
 ## [1.2.0] - 2026-10-29
 
 ### Added
